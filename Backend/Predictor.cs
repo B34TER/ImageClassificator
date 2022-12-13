@@ -2,16 +2,29 @@
 
 namespace Backend
 {
-    public static class Predictor
+    public class Predictor
     {
-        static readonly string workingDirectory = Environment.CurrentDirectory;
-        static readonly string solutionDirectory = Directory.GetParent(workingDirectory).Parent.Parent.Parent.FullName;
-        static readonly string _assetsPath = Path.Combine(solutionDirectory, "assets");
-        static readonly string _imagesFolder = Path.Combine(_assetsPath, "images");
-        static readonly string _trainTagsTsv = Path.Combine(_imagesFolder, "tags.tsv");
-        static readonly string _inceptionTensorFlowModel = Path.Combine(_assetsPath, "inception", "tensorflow_inception_graph.pb");
+        private string _assetsPath;
+        private string _imagesFolder;
+        private string _trainTagsTsv;
+        private string _inceptionTensorFlowModel;
+        private readonly ITransformer _model;
+        private readonly MLContext _mlContext;
 
-        public static ITransformer GenerateModel(MLContext mlContext)
+        public Predictor()
+        {
+            string workingDirectory = Environment.CurrentDirectory;
+            string solutionDirectory = Directory.GetParent(workingDirectory).Parent.Parent.Parent.FullName;
+            _assetsPath = Path.Combine(solutionDirectory, "assets");
+            _imagesFolder = Path.Combine(_assetsPath, "images");
+            _trainTagsTsv = Path.Combine(_imagesFolder, "tags.tsv");
+            _inceptionTensorFlowModel = Path.Combine(_assetsPath, "inception", "tensorflow_inception_graph.pb");
+
+            _mlContext = new MLContext();
+            _model = GenerateModel(_mlContext);
+        }
+
+        private ITransformer GenerateModel(MLContext mlContext)
         {
             IEstimator<ITransformer> pipeline = mlContext.Transforms.LoadImages(outputColumnName: "input", imageFolder: _imagesFolder, inputColumnName: nameof(ImageData.ImagePath))
                     // The image transforms transform the images into the model's expected format.
@@ -30,14 +43,14 @@ namespace Backend
 
             return model;
         }
-        public static ImagePrediction ClassifySingleImage(MLContext mlContext, ITransformer model, string imagePath)
+        public ImagePrediction ClassifySingleImage(string imagePath)
         {
             var imageData = new ImageData()
             {
                 ImagePath = imagePath
             };
 
-            var predictor = mlContext.Model.CreatePredictionEngine<ImageData, ImagePrediction>(model);
+            var predictor = _mlContext.Model.CreatePredictionEngine<ImageData, ImagePrediction>(_model);
             var prediction = predictor.Predict(imageData);
 
             return new ImagePrediction()
@@ -45,15 +58,6 @@ namespace Backend
                 PredictedLabelValue = prediction.PredictedLabelValue,
                 Score = new float[] { prediction.Score.Max() }
             };
-        }
-
-        public static ImagePrediction MakePrediction(string imagePath)
-        {
-            MLContext mlContext = new MLContext();
-
-            ITransformer model = GenerateModel(mlContext);
-
-            return ClassifySingleImage(mlContext, model, imagePath);
         }
     }
 }
